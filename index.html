@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, maximum-scale=2.0">
+<title>db_zip-city3</title>
+<style>
+/* Your original beautiful styles - unchanged */
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; margin: 0; padding: 8px; background: linear-gradient(135deg, #f0f4f8, #d9e2ec); }
+.container { max-width: 100%; margin: auto; background: white; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); overflow: hidden; }
+.header-controls { background: #1e3a8a; color: white; padding: 16px; }
+.header-controls h1 { margin: 0 0 12px 0; font-size: 1.65em; text-align: center; }
+.search-container { display: flex; align-items: center; gap: 12px; max-width: 650px; margin: 0 auto; }
+.search-container button { padding: 16px 20px; font-size: 1.0em; font-weight: 600; border: none; border-radius: 10px; background: #64748b; color: white; white-space: nowrap; min-height: 52px; cursor: pointer; }
+#searchInput { padding: 16px 14px; font-size: 1.1em; border: 2px solid #cbd5e1; border-radius: 10px; width: 500px; box-sizing: border-box; }
+.controls { background: #f8fafc; padding: 12px; }
+.buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+button { padding: 13px 12px; font-size: 0.95em; border: none; border-radius: 10px; font-weight: 600; flex: 1; min-height: 48px; }
+.export-btn { background: #16a34a; color: white; }
+.table-container { padding: 0 8px 12px; max-height: 65vh; overflow: auto; }
+table { width: 100%; border-collapse: collapse; min-width: 800px; }
+th, td { padding: 12px 8px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+th { background: #1e40af; color: white; position: sticky; top: 0; }
+tr:hover { background: #f1f5f9; }
+.maps-link { color: #2563eb; font-weight: bold; text-decoration: none; }
+@media (max-width: 600px) {
+    .search-container { flex-direction: column; align-items: stretch; }
+    #searchInput { width: 100%; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+    <div class="header-controls">
+        <h1>📍 db_zip-city3</h1>
+        <div class="search-container">
+            <button onclick="clearSearch()">Clear Search</button>
+            <input type="text" id="searchInput" placeholder="Search city, county, state, zip... (multiple words OK)" autofocus>
+        </div>
+    </div>
+    <div class="controls">
+        <div class="buttons">
+            <button class="export-btn" onclick="exportCSV()">Export CSV</button>
+            <button onclick="exportJSON()">Export JSON</button>
+        </div>
+        <div class="stats">Showing <strong id="count">0</strong> of <strong id="total">0</strong> records</div>
+    </div>
+    <div class="table-container">
+        <div id="loading" style="text-align:center; padding:80px 20px; font-size:1.2em; color:#64748b;">
+            Loading db_zip-city3.csv ...
+        </div>
+        <table id="dataTable" style="display:none;">
+            <thead id="tableHead"></thead>
+            <tbody id="tableBody"></tbody>
+        </table>
+    </div>
+    <div class="pagination" id="pagination" style="padding:10px; text-align:center;"></div>
+</div>
+
+<script>
+// ==================== AUTO-DETECT FILE LOCATION ====================
+let dataFile = 'db_zip-city3.csv';   // default for local
+
+// If running on GitHub Pages, use raw GitHub URL
+if (window.location.hostname.includes('github.io')) {
+    const repoPath = window.location.pathname.split('/').slice(1, 3).join('/'); // gets username/repo
+    dataFile = `https://raw.githubusercontent.com/${repoPath}/main/db_zip-city3.csv`;
+}
+
+console.log("Loading data from:", dataFile);
+
+// ==================== REST OF YOUR ORIGINAL CODE (unchanged) ====================
+let data = [];
+let filteredData = [];
+let headers = [];
+let currentPage = 1;
+const rowsPerPage = 100;
+let filterTimeout = null;
+
+async function loadPipeFile() {
+    try {
+        const response = await fetch(dataFile);
+        const text = await response.text();
+        const lines = text.trim().split('\n');
+        headers = lines[0].split(',').map(h => h.trim());   // Note: now using comma for CSV
+
+        data = lines.slice(1).map((line, idx) => {
+            const values = line.split(',').map(v => v.trim().replace(/^"|"$/g, '')); // handle quoted fields
+            let obj = {};
+            headers.forEach((h, i) => {
+                let key = h.toLowerCase().replace(/[^a-z0-9]/g, '');
+                obj[key] = values[i] || '';
+            });
+            let city   = obj.city || '';
+            let county = obj.county || '';
+            let state  = obj.state || '';
+            let zip    = obj.zipcode || obj.zip || '';
+            let query = [city, county, state, zip].filter(Boolean).join(', ');
+            obj.googlemaps = query ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}` : "#";
+            obj.id = idx + 1;
+            return obj;
+        });
+
+        filteredData = [...data];
+        renderTable();
+    } catch (e) {
+        document.getElementById('loading').innerHTML = `❌ File not found.<br>Make sure db_zip-city3.csv is in the same folder.`;
+        console.error(e);
+    }
+}
+
+// ... (the rest of your functions: renderTable, renderPagination, filterData, clearSearch, exportCSV, exportJSON, downloadFile stay exactly the same)
+
+function renderTable() { /* your original renderTable code */ 
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('dataTable').style.display = 'table';
+    const thead = document.getElementById('tableHead');
+    let headHTML = '<tr><th>Google Maps</th>';
+    headers.forEach(h => headHTML += `<th>${h}</th>`);
+    headHTML += '</tr>';
+    thead.innerHTML = headHTML;
+
+    const tbody = document.getElementById('tableBody');
+    tbody.innerHTML = '';
+    const start = (currentPage - 1) * rowsPerPage;
+    const end = start + rowsPerPage;
+    const pageData = filteredData.slice(start, end);
+
+    pageData.forEach(row => {
+        let html = '<tr>';
+        html += `<td><a href="${row.googlemaps}" target="_blank" class="maps-link">🗺️ Open in Google Maps</a></td>`;
+        headers.forEach(h => {
+            const key = h.toLowerCase().replace(/[^a-z0-9]/g, '');
+            html += `<td>${row[key] || ''}</td>`;
+        });
+        html += '</tr>';
+        tbody.innerHTML += html;
+    });
+
+    document.getElementById('count').textContent = filteredData.length.toLocaleString();
+    document.getElementById('total').textContent = data.length.toLocaleString();
+    renderPagination();
+}
+
+function renderPagination() {
+    const totalPages = Math.ceil(filteredData.length / rowsPerPage);
+    const pagination = document.getElementById('pagination');
+    pagination.innerHTML = '';
+    for (let i = 1; i <= Math.min(totalPages, 9); i++) {
+        const btn = document.createElement('button');
+        btn.style.margin = '3px';
+        btn.style.padding = '8px 14px';
+        btn.textContent = i;
+        btn.onclick = () => { currentPage = i; renderTable(); };
+        pagination.appendChild(btn);
+    }
+}
+
+function filterData() {
+    clearTimeout(filterTimeout);
+    filterTimeout = setTimeout(() => {
+        const input = document.getElementById('searchInput').value.toLowerCase().trim();
+        if (!input) {
+            filteredData = [...data];
+        } else {
+            const searchWords = input.split(/\s+/).filter(Boolean);
+            filteredData = data.filter(item => {
+                const rowText = Object.values(item).join(' ').toLowerCase();
+                return searchWords.every(word => rowText.includes(word));
+            });
+        }
+        currentPage = 1;
+        renderTable();
+    }, 80);
+}
+
+function clearSearch() {
+    document.getElementById('searchInput').value = '';
+    filteredData = [...data];
+    currentPage = 1;
+    renderTable();
+}
+
+function exportCSV() { /* your original */ 
+    let csv = 'GoogleMaps,' + headers.join(',') + '\n';
+    filteredData.forEach(row => {
+        let line = `"${row.googlemaps || ''}"`;
+        headers.forEach(h => {
+            const key = h.toLowerCase().replace(/[^a-z0-9]/g, '');
+            line += `,"${(row[key] || '').replace(/"/g,'""')}"`;
+        });
+        csv += line + '\n';
+    });
+    downloadFile(csv, 'zip-city_export.csv', 'text/csv');
+}
+
+function exportJSON() {
+    downloadFile(JSON.stringify(filteredData, null, 2), 'zip-city_export.json', 'application/json');
+}
+
+function downloadFile(content, filename, type) {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+}
+
+// Listeners
+document.getElementById('searchInput').addEventListener('input', filterData);
+document.getElementById('searchInput').addEventListener('focus', function() {
+    setTimeout(() => this.scrollIntoView({ behavior: "smooth", block: "center" }), 300);
+});
+
+window.onload = loadPipeFile;
+</script>
+</body>
+</html>
